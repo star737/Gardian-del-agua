@@ -1,0 +1,320 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guardianes del Agua - Pixel Adventure</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#101a35;color:white;
+ font-family:monospace;text-align:center;padding:12px
+}
+h1{color:#67f5ff;text-shadow:3px 3px #1757a0;font-size:clamp(22px,4vw,36px)}
+p{color:#c8f8ff}
+.panel{
+ max-width:850px;margin:12px auto;padding:10px;
+ background:#20385e;border:3px solid #6deaff;
+ display:flex;justify-content:space-around;gap:8px;flex-wrap:wrap;
+ font-size:clamp(12px,2vw,17px)
+}
+#marcador{color:#fff56b}
+#juego{
+ width:min(100%,800px);margin:auto;overflow:hidden;
+ border:4px solid #8df8ff;background:#79ddff;
+ box-shadow:0 0 22px #168ecb
+}
+canvas{
+ display:block;width:100%;height:auto;
+ image-rendering:pixelated;image-rendering:crisp-edges
+}
+button{
+ font-family:monospace;font-weight:bold;font-size:16px;
+ background:#21cce0;color:#092b4c;border:3px solid #b5fbff;
+ padding:12px 16px;margin:5px;cursor:pointer;
+ box-shadow:0 4px #087b9c
+}
+button:active{transform:translateY(3px);box-shadow:0 1px #087b9c}
+#mensaje{min-height:28px;color:#fff56b;font-weight:bold}
+small{color:#cceeff}
+</style>
+</head>
+<body>
+<h1>💧 GUARDIANES DEL AGUA 💧</h1>
+
+<div class="panel">
+ <span id="marcador">⭐ Puntos: 0</span>
+ <span id="agua">💧 Gotas: 0/10</span>
+ <span>🌎 Misión: salvar el río</span>
+</div>
+
+<div id="juego">
+<canvas id="lienzo" width="320" height="180"></canvas>
+</div>
+
+<div id="mensaje">¡Aventura ecológica! Recoge 10 gotas y salva el río.</div>
+
+<div>
+ <button onclick="tecla('left')">⬅ IZQUIERDA</button>
+ <button onclick="tecla('jump')">⬆ SALTAR</button>
+ <button onclick="tecla('right')">DERECHA ➡</button>
+</div>
+<div>
+ <button onclick="reiniciar()">🔄 NUEVA PARTIDA</button>
+</div>
+<small>Controles: flechas o A/D para caminar, espacio o W para saltar.</small>
+
+<script>
+const canvas=document.getElementById("lienzo");
+const ctx=canvas.getContext("2d");
+ctx.imageSmoothingEnabled=false;
+
+let jugador,gotas,basura,puntos,frame,caminar,teclas,terminado;
+const W=320,H=180;
+
+function nuevoJugador(){
+ return {x:35,y:127,vx:0,vy:0,w:12,h:19,
+         suelo:false,direccion:1,anim:0};
+}
+
+function reiniciar(){
+ jugador=nuevoJugador();
+ gotas=[];basura=[];puntos=0;frame=0;
+ teclas={};terminado=false;
+ for(let i=0;i<10;i++){
+  gotas.push({x:70+i*24,y:70+(i%3)*16,tomada:false});
+ }
+ for(let i=0;i<6;i++){
+  basura.push({x:95+i*40,y:143,tipo:i%2});
+ }
+ document.getElementById("mensaje").textContent=
+ "¡Recoge 10 gotas! Salta sobre la basura.";
+ actualizarMarcador();
+}
+
+function actualizarMarcador(){
+ document.getElementById("marcador").textContent="⭐ Puntos: "+puntos;
+ document.getElementById("agua").textContent=
+ "💧 Gotas: "+gotas.filter(g=>g.tomada).length+"/10";
+}
+
+function rect(x,y,w,h,color){
+ ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h);
+}
+
+function fondo(){
+ // Cielo
+ rect(0,0,W,H,"#70d9ff");
+ // Sol
+ rect(265,12,18,18,"#ffeb69");
+ rect(269,8,10,26,"#ffeb69");
+ rect(261,16,26,10,"#ffeb69");
+ // Nubes
+ for(let n of [[25,18],[120,30],[210,18]]){
+  rect(n[0],n[1],22,6,"#fff");
+  rect(n[0]+5,n[1]-5,12,6,"#fff");
+  rect(n[0]+3,n[1]+6,16,3,"#d7f6ff");
+ }
+ // Montañas
+ rect(0,65,55,25,"#64c98a");
+ rect(15,53,20,12,"#64c98a");
+ rect(55,73,48,18,"#36b77c");
+ rect(82,59,18,14,"#36b77c");
+ rect(190,70,45,20,"#64c98a");
+ rect(207,58,18,12,"#64c98a");
+ // Edificios
+ rect(4,79,22,39,"#e9a16e");
+ rect(8,84,5,6,"#fff19a");rect(17,84,5,6,"#fff19a");
+ rect(30,88,22,30,"#bd83ce");
+ rect(35,94,5,6,"#fff19a");rect(44,94,5,6,"#fff19a");
+ rect(268,83,25,35,"#f0a16c");
+ rect(273,89,5,6,"#fff19a");rect(283,89,5,6,"#fff19a");
+ // Árboles
+ for(let x of [61,247,300]){
+  rect(x+5,99,5,22,"#96552f");
+  rect(x,91,15,13,"#198e61");
+  rect(x+3,85,9,10,"#31b96a");
+  rect(x+4,87,3,3,"#72e878");
+ }
+ // Suelo
+ rect(0,118,W,62,"#39b85c");
+ rect(0,118,W,5,"#91ef67");
+ for(let x=0;x<W;x+=16){
+  rect(x,132,8,3,"#27964e");
+  rect(x+7,150,5,3,"#27964e");
+  rect(x+2,169,9,3,"#27964e");
+ }
+ // Río en la parte inferior
+ rect(0,156,W,24,"#218fe0");
+ for(let x=0;x<W;x+=28){
+  rect(x,162,12,2,"#8be9ff");
+  rect(x+12,171,8,2,"#8be9ff");
+ }
+ // Orillas
+ rect(0,154,W,3,"#a2f078");
+ rect(0,178,W,2,"#8be9ff");
+}
+
+function dibujarJugador(){
+ let p=jugador;
+ let x=Math.round(p.x),y=Math.round(p.y);
+ let paso=p.suelo&&Math.abs(p.vx)>0.1?Math.floor(p.anim/5)%2:0;
+ // Sombra
+ rect(x-2, y+19,16,2,"#287d54");
+ // Pelo
+ rect(x+2,y,8,4,"#633d28");
+ rect(x+1,y+3,10,4,"#f2bd88");
+ rect(x+2,y+4,2,2,"#fff");
+ rect(x+3,y+4,1,2,"#24395d");
+ rect(x+8,y+4,2,2,"#24395d");
+ // Gorra azul
+ rect(x,y-2,12,4,"#1556c6");
+ rect(x+2,y-4,7,3,"#327dff");
+ rect(x+9,y,5,2,"#1556c6");
+ // Cuerpo
+ rect(x+2,y+7,8,7,"#f6e84c");
+ rect(x+1,y+8,10,5,"#ffe95a");
+ // Mochila
+ rect(x-1,y+8,3,6,"#a14e26");
+ // Brazos
+ rect(x,y+8,2,5,"#f2bd88");
+ rect(x+10,y+8,2,5,"#f2bd88");
+ // Piernas animadas
+ if(paso===0){
+  rect(x+2,y+14,3,4,"#2855be");
+  rect(x+7,y+14,3,4,"#2855be");
+  rect(x+1,y+17,4,2,"#583e39");
+  rect(x+7,y+17,4,2,"#583e39");
+ }else{
+  rect(x+1,y+14,3,3,"#2855be");
+  rect(x+7,y+14,3,4,"#2855be");
+  rect(x,y+16,4,2,"#583e39");
+  rect(x+7,y+17,4,2,"#583e39");
+ }
+ // Emblema de gota
+ rect(x+5,y+9,2,3,"#1ecbff");
+}
+
+function dibujarGota(g){
+ if(g.tomada)return;
+ let bob=Math.round(Math.sin((frame+g.x)*0.12)*2);
+ let x=Math.round(g.x),y=Math.round(g.y+bob);
+ rect(x+3,y,4,3,"#c7faff");
+ rect(x+1,y+3,8,5,"#28baff");
+ rect(x+3,y+8,4,3,"#0877dc");
+ rect(x+4,y+3,2,4,"#fff");
+}
+
+function dibujarBasura(b){
+ let x=Math.round(b.x),y=b.y;
+ if(b.tipo===0){
+  rect(x,y,8,10,"#8c5a39");
+  rect(x-1,y,10,2,"#b47b4c");
+  rect(x+2,y+3,2,2,"#f6e8ba");
+ }else{
+  rect(x+2,y,5,2,"#ffcf51");
+  rect(x,y+2,9,8,"#f29c38");
+  rect(x+2,y+4,5,2,"#fff0a0");
+ }
+}
+
+function colision(a,b,w,h){
+ return a.x < b.x+w && a.x+a.w > b.x &&
+        a.y < b.y+h && a.y+a.h > b.y;
+}
+
+function actualizar(){
+ if(terminado)return;
+ frame++;
+ let p=jugador;
+ p.vx=0;
+ if(teclas.left){p.vx=-1.6;p.direccion=-1;}
+ if(teclas.right){p.vx=1.6;p.direccion=1;}
+ p.x+=p.vx;
+ p.x=Math.max(2,Math.min(W-p.w-2,p.x));
+ p.anim+=Math.abs(p.vx);
+
+ p.vy+=0.22;
+ p.y+=p.vy;
+ if(p.y+p.h>=155){
+  p.y=155-p.h;p.vy=0;p.suelo=true;
+ }else p.suelo=false;
+
+ // Recoger gotas
+ for(let g of gotas){
+  if(!g.tomada&&colision(p,{x:g.x,y:g.y,w:10,h:12},10,12)){
+   g.tomada=true;puntos+=10;
+   actualizarMarcador();
+   document.getElementById("mensaje").textContent="¡Gota salvada! 💧 +10 puntos";
+   if(gotas.every(a=>a.tomada)){
+    terminado=true;
+    document.getElementById("mensaje").textContent=
+    "🏆 ¡GANASTE! ¡Salvaste el agua del planeta!";
+   }
+  }
+ }
+
+ // Obstáculos: si los tocas, retrocedes un poco
+ for(let b of basura){
+  if(colision(p,{x:b.x,y:b.y,w:9,h:10},p.w,p.h)){
+   p.x-=p.direccion*5;
+   document.getElementById("mensaje").textContent=
+   "¡Cuidado con la basura! Mantén limpio el río.";
+  }
+ }
+}
+
+function dibujar(){
+ fondo();
+ for(let g of gotas)dibujarGota(g);
+ for(let b of basura)dibujarBasura(b);
+ dibujarJugador();
+ // Letrero
+ rect(7,7,99,13,"#174d85");
+ ctx.fillStyle="#fff";
+ ctx.font="7px monospace";
+ ctx.fillText("PROTEGE EL AGUA",12,16);
+ if(terminado){
+  rect(52,62,216,42,"#153c69");
+  rect(55,65,210,36,"#f9e967");
+  ctx.fillStyle="#163c69";
+  ctx.font="bold 12px monospace";
+  ctx.fillText("¡MISIÓN COMPLETADA!",78,80);
+  ctx.font="8px monospace";
+  ctx.fillText("EL PLANETA TE LO AGRADECE",75,91);
+ }
+}
+
+function bucle(){
+ actualizar();
+ dibujar();
+ requestAnimationFrame(bucle);
+}
+
+function tecla(nombre){
+ if(nombre==="jump"&&jugador.suelo&&!terminado){
+  jugador.vy=-4.4;jugador.suelo=false;
+ }
+ if(nombre==="left")jugador.x=Math.max(2,jugador.x-8);
+ if(nombre==="right")jugador.x=Math.min(W-jugador.w-2,jugador.x+8);
+}
+
+document.addEventListener("keydown",e=>{
+ if(["ArrowLeft","ArrowRight","ArrowUp"," "].includes(e.key))e.preventDefault();
+ if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")teclas.left=true;
+ if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")teclas.right=true;
+ if(e.key==="ArrowUp"||e.key===" "||e.key.toLowerCase()==="w"){
+  if(jugador.suelo&&!terminado){jugador.vy=-4.4;jugador.suelo=false;}
+ }
+});
+document.addEventListener("keyup",e=>{
+ if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")teclas.left=false;
+ if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")teclas.right=false;
+});
+
+reiniciar();
+bucle();
+</script>
+</body>
+</html>
